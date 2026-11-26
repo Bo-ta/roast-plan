@@ -37,7 +37,7 @@ input,select,textarea{font:inherit;font-size:16px;color:var(--ink);background:va
 input:focus,select:focus,button:focus-visible{outline:2px solid var(--ember);outline-offset:1px}
 button.b,label.b{font:inherit;font-weight:700;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;min-height:44px;cursor:pointer}
 button.p{background:var(--ember);color:#fff;border-color:var(--ember)}
-button.s{min-height:34px;padding:4px 10px;font-size:13px}
+button.s{min-height:34px;padding:4px 10px;font-size:13px;white-space:nowrap}
 /* weather strip */
 .wx{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(138px,1fr);gap:6px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x mandatory}
 .d{scroll-snap-align:start;background:var(--panel);border-radius:10px;padding:8px 6px;text-align:center;font:inherit;font-size:12px;color:var(--ink);border:2px solid transparent;cursor:pointer}
@@ -97,8 +97,20 @@ dialog::backdrop{background:#0008}
 .lines .ln{display:grid;grid-template-columns:1.2fr 1.4fr .8fr auto;gap:6px;margin-bottom:6px;align-items:center}
 .lines .g{font-size:12px;color:var(--mute);grid-column:1/-1;margin-top:-4px}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px}
-.beanset .r{display:grid;grid-template-columns:1fr 110px auto;gap:6px;margin-bottom:6px}
+.beanset .r{display:grid;grid-template-columns:1fr 110px auto;gap:6px;margin-bottom:12px}
+.beanset .li2{grid-column:1/-1;font-size:12px;color:var(--mute);margin-top:-2px}
+.beanset .li2 b{color:var(--ink)}
 .scroll{overflow-x:auto}
+.prog{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.prog .pb{flex:1 1 60px;min-width:50px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.prog .pb i{display:block;height:100%;background:var(--ember)}
+.prog.full .pb i{background:var(--ok)}
+.prog b{font-variant-numeric:tabular-nums;font-size:13px;min-width:3.2em;text-align:right}
+.bc.done{border-color:var(--ok)}
+.bc .doneMsg{color:var(--ok);font-weight:900;font-size:16px;margin:6px 0}
+.stockRow{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--panel);border-radius:20px;padding:4px 12px;font-size:13px;white-space:nowrap}
+.chip b{font-variant-numeric:tabular-nums}
 .top{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .logo{height:124px;width:auto;flex:none;margin:-4px 0 -40px;position:relative;z-index:1}
 .sync:empty{display:none}
@@ -148,7 +160,11 @@ dialog::backdrop{background:#0008}
 
   <h2>対象の依頼 <span class="sub">チェックを外すと今回の焙煎から除外</span></h2>
   <div id="planOrders"></div>
-  <div class="row" style="margin-top:12px"><button class="b p" id="markRoasted">チェック中の依頼を「焙煎済」にする</button></div>
+  <div class="row" style="margin-top:12px"><button class="b p" id="markRoasted">100%完了の依頼をまとめて「焙煎済」にする</button></div>
+  <h2>焙煎記録 <span class="sub">焼いた分を記録すると、納品希望日が近い依頼から順に割り当てます</span></h2>
+  <div id="stock" class="stockRow"></div>
+  <div class="row" style="margin:8px 0 10px"><button class="b" id="addRoast">＋ 焙煎を記録</button></div>
+  <div id="roastLog"></div>
 </section>
 
 <section class="view" id="orders">
@@ -184,7 +200,7 @@ dialog::backdrop{background:#0008}
     <label>ホット 1杯<input type="number" id="gHot"></label>
     <label>アイス 1杯<input type="number" id="gIce"></label>
   </div>
-  <h2>豆の種類 <span class="sub">ロス%を空欄にすると標準値を使用</span></h2>
+  <h2>豆の種類 <span class="sub">ロス%が空欄なら、焙煎後の重さを入れた記録が2回以上で実測平均、それまでは標準値を使用</span></h2>
   <div class="beanset" id="beanSet"></div>
   <button class="b" id="addBean">＋ 豆を追加</button>
   <h2>焙煎場所（天気予報）</h2>
@@ -205,6 +221,22 @@ dialog::backdrop{background:#0008}
   <p class="sub">データはこの端末のブラウザ内に保存されます。自動同期を使わない場合は、JSONの書き出し→読み込みで端末間を移せます。JSONはバックアップにも使えます。</p>
 </section>
 </main>
+
+<dialog id="rdlg"><form class="dlg" id="rForm">
+  <h3>焙煎を記録</h3>
+  <div class="grid2">
+    <label>豆<select id="rBean"></select></label>
+    <label>焙煎日<input type="date" id="rDate" required></label>
+    <label>生豆の投入量（g/回）<input type="number" id="rGreen" min="1" required></label>
+    <label>焙煎後の重さ（g/回・任意）<input type="number" id="rRoasted" min="1"></label>
+    <label>回数（同じ量で焼いた回数）<input type="number" id="rCount" min="1" value="1" required></label>
+  </div>
+  <p class="sub" id="rHint"></p>
+  <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <button type="button" class="b" id="rCancel">キャンセル</button>
+    <button class="b p">記録する</button>
+  </div>
+</form></dialog>
 
 <dialog id="dlg"><form class="dlg" id="oForm">
   <h3 id="dlgTitle">依頼を追加</h3>
@@ -267,6 +299,7 @@ function fillDefaults(){ // 古い版のデータや同期で来た設定に、�
   for(const k of Object.keys(DEF))if(k!=='g'&&k!=='place'&&(S.settings[k]===''||S.settings[k]==null||Number.isNaN(S.settings[k])))S.settings[k]=DEF[k];
 }
 fillDefaults();
+S.roasts=S.roasts||[];S.usage=S.usage||[];
 const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const now=()=>Date.now();
 let syncTm;
@@ -276,7 +309,17 @@ const ITEMS={bag100:['豆','袋'],bag150:['豆','袋'],bag200:['豆','袋'],biz2
 const itemG=k=>k==='gram'?1:(+S.settings.g[k]||0);
 const itemLabel=k=>k==='gram'?'豆 g指定':`${ITEMS[k][0]}（${itemG(k)}g）`;
 const beanName=id=>S.beans.find(b=>b.id===id)?.name||'（削除された豆）';
-const beanLoss=id=>{const b=S.beans.find(x=>x.id===id);return b&&b.loss!==''&&b.loss!=null?+b.loss:+S.settings.loss};
+/* 実測ロス率：焙煎後の重さを入力した記録（直近10回）の平均。2回以上で採用 */
+function autoLoss(id){
+  const rs=(S.roasts||[]).filter(r=>r.bean===id&&!r.est&&r.green>0&&r.roasted>0)
+    .map(r=>({...r,l:(1-r.roasted/r.green)*100})).filter(r=>r.l>=3&&r.l<=40)
+    .sort((a,b)=>b.date.localeCompare(a.date)||(b.u||0)-(a.u||0)).slice(0,10);
+  if(rs.length<2)return null;
+  return {v:Math.round(rs.reduce((a,r)=>a+r.l,0)/rs.length*10)/10,n:rs.length};
+}
+const manualLoss=id=>{const b=S.beans.find(x=>x.id===id);return b&&b.loss!==''&&b.loss!=null?+b.loss:null};
+const beanLoss=id=>manualLoss(id)??autoLoss(id)?.v??+S.settings.loss;
+const lossSrc=id=>manualLoss(id)!=null?'手入力':autoLoss(id)?`実測${autoLoss(id).n}回平均`:'標準';
 const orderG=o=>o.lines.reduce((a,l)=>a+itemG(l.item)*(+l.qty||0),0);
 const typeCls=t=>({'オンラインショップ':'online','卸':'whole','イベント':'event'}[t]||'');
 
@@ -293,24 +336,39 @@ function planOrders(){
   const f=$('#pFrom').value||'0000',t=$('#pTo').value||'9999';
   return S.orders.filter(o=>o.status==='未焙煎'&&o.due<=t&&(o.due>=f||o.due<today())).sort((a,b)=>a.due.localeCompare(b.due));
 }
+/* 焙煎記録を、納品希望日が近い未焙煎の依頼から順に割り当てる */
+function allocate(){
+  const pool={};
+  S.roasts.forEach(r=>pool[r.bean]=(pool[r.bean]||0)+(+r.roasted||0));
+  S.usage.forEach(x=>pool[x.bean]=(pool[x.bean]||0)-(+x.g||0));
+  const open=S.orders.filter(o=>o.status==='未焙煎').sort((a,b)=>a.due.localeCompare(b.due)||(a.c||0)-(b.c||0)||(a.id<b.id?-1:1));
+  const A={};
+  open.forEach(o=>{const need={},got={};let nT=0,gT=0;
+    o.lines.forEach(l=>{const g=itemG(l.item)*(+l.qty||0);if(g)need[l.bean]=(need[l.bean]||0)+g});
+    for(const[b,g]of Object.entries(need)){const take=Math.max(0,Math.min(g,pool[b]||0));pool[b]=(pool[b]||0)-take;got[b]=take;nT+=g;gT+=take}
+    A[o.id]={need,got,needT:nT,gotT:gT,pct:gT>=nT-.5?100:Math.min(99,Math.floor(gT/nT*100))}});
+  return {A,left:pool};
+}
+const progHtml=a=>a?`<div class="prog ${a.pct>=100?'full':''}"><div class="pb"><i style="width:${a.pct}%"></i></div><b>${a.pct}%</b></div>`:'';
 function calcPlan(){
-  const os=planOrders().filter(o=>!excluded.has(o.id)), map=new Map();
-  os.forEach(o=>o.lines.forEach(l=>{const g=itemG(l.item)*(+l.qty||0);if(!g)return;
-    const m=map.get(l.bean)||{bean:l.bean,roasted:0,parts:[]};m.roasted+=g;m.parts.push({o,l,g});map.set(l.bean,m)}));
+  const AL=allocate(), os=planOrders().filter(o=>!excluded.has(o.id)), map=new Map();
+  os.forEach(o=>{const a=AL.A[o.id];o.lines.forEach(l=>{const g=itemG(l.item)*(+l.qty||0);if(!g)return;
+    const m=map.get(l.bean)||{bean:l.bean,roasted:0,parts:[]};m.roasted+=g;m.parts.push({o,l,g});map.set(l.bean,m)})});
+  map.forEach(m=>{m.done=[...new Set(m.parts.map(p=>p.o.id))].reduce((s,id)=>s+(AL.A[id]?.got[m.bean]||0),0)});
   const B=+S.settings.batch||650, MX=Math.max(B,+S.settings.max||750), spare=(+S.settings.spare||0)/100;
-  const rows=[...map.values()].map(m=>{const loss=beanLoss(m.bean)/100,green=Math.ceil(m.roasted*(1+spare)/(1-loss)),
-    n=Math.ceil(green/B-1e-9),k=Math.floor(green/B+1e-9),r=green-k*B,best=Math.ceil(green/MX-1e-9),per=Math.ceil(green/best);
-    return {...m,loss,green,n,k,r,best,per,B,MX}}).sort((a,b)=>b.best-a.best);
-  const due=os.length?os.map(o=>o.due).sort()[0]:null;
+  const rows=[...map.values()].map(m=>{const loss=beanLoss(m.bean)/100,remain=Math.max(0,m.roasted-m.done),green=Math.ceil(remain*(1+spare)/(1-loss)),
+    n=Math.ceil(green/B-1e-9),k=Math.floor(green/B+1e-9),r=green-k*B,best=Math.ceil(green/MX-1e-9),per=best?Math.ceil(green/best):0;
+    return {...m,remain,loss,green,n,k,r,best,per,B,MX,left:Math.max(0,AL.left[m.bean]||0)}}).sort((a,b)=>b.best-a.best);
+  const pend=os.filter(o=>(AL.A[o.id]?.pct??0)<100),due=pend.length?pend.map(o=>o.due).sort()[0]:null;
   const deadline=due?addDays(due,-(+S.settings.rest||0)):null;
   const total=rows.reduce((a,r)=>a+r.best,0), totalStd=rows.reduce((a,r)=>a+r.n,0);
-  return {os,rows,due,deadline,total,totalStd,days:Math.ceil(total/(+S.settings.perDay||1))};
+  return {AL,os,rows,due,deadline,total,totalStd,days:Math.ceil(total/(+S.settings.perDay||1))};
 }
 function renderPlan(){
   const P=calcPlan(), all=planOrders();
   $('#kpis').innerHTML=[
-    ['hot',P.total,P.totalStd>P.total?`焙煎回数（${S.settings.batch}g基準なら${P.totalStd}回）`:'焙煎回数（合計）'],['',fmt(P.rows.reduce((a,r)=>a+r.green,0))+'<small style="font-size:16px"> g</small>','必要な生豆'],
-    ['',fmt(P.rows.reduce((a,r)=>a+r.roasted,0))+'<small style="font-size:16px"> g</small>','必要な焙煎豆'],
+    ['hot',P.total,P.totalStd>P.total?`焙煎回数（${S.settings.batch}g基準なら${P.totalStd}回）`:'焙煎回数（合計）'],['',fmt(P.rows.reduce((a,r)=>a+r.green,0))+'<small style="font-size:16px"> g</small>','残りに必要な生豆'],
+    ['',fmt(P.rows.reduce((a,r)=>a+r.remain,0))+'<small style="font-size:16px"> g</small>',`残りの焙煎豆（済 ${fmt(P.rows.reduce((a,r)=>a+Math.min(r.done,r.roasted),0))}g）`],
     ['',P.deadline?md(P.deadline)+`<small style="font-size:16px">（${wk(P.deadline)}）</small>`:'—','焙煎期限（最短の納品から逆算）']
   ].map(([c,n,l])=>`<div class="kpi ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
   $('#beanCards').innerHTML=P.rows.length?P.rows.map(r=>{
@@ -318,26 +376,73 @@ function renderPlan(){
     const std=k===0?`1回 ${fmt(r.green)}g`:rem<1?`${fmt(B)}g × ${k}回（ちょうど）`:`${fmt(B)}g × ${k}回 ＋ 最後の1回 <b>${fmt(rem)}g</b>（計${n}回）`;
     const spread=k&&rem>=1?(B+add<=MX?`最後の${fmt(rem)}g を${k}回に分けると +${fmt(add)}g → <b>${fmt(B+add)}g × ${k}回</b>（上限${fmt(MX)}g以内）`
       :`最後の${fmt(rem)}g を${k}回に分けると +${fmt(add)}g → ${fmt(B+add)}g（上限${fmt(MX)}gを超える）`):'';
-    const segs=Array.from({length:best},()=>`<i style="width:${100/best*(per/MX)}%"></i>`).join('');
-    return `<div class="bc"><h3>${esc(beanName(r.bean))}<span>${best<n?`<small>${n}→</small>`:''}${best}<small> 回</small></span></h3>
-    <div class="plan"><div class="pl">おすすめ</div><div class="pv">1回 <b>${fmt(per)}g</b> × ${best}回</div></div>
-    <div class="fill" title="各回の生豆投入量（バーの長さ＝上限${fmt(MX)}g）">${segs}</div>
+    const pct=r.roasted?Math.min(100,Math.floor(r.done/r.roasted*100)):100, fin=r.remain<.5;
+    return `<div class="bc ${fin?'done':''}"><h3>${esc(beanName(r.bean))}<span>${fin?'<small style="color:var(--ok)">完了</small>':`${best<n?`<small>${n}→</small>`:''}${best}<small> 回</small>`}</span></h3>
+    ${fin?'<div class="doneMsg">この期間の焙煎は完了</div>':`<div class="plan"><div class="pl">残り</div><div class="pv">1回 <b>${fmt(per)}g</b> × ${best}回</div></div>`}
+    ${progHtml({pct})}
     <dl><dt>焙煎豆（必要）</dt><dd>${fmt(r.roasted)} g</dd>
-    <dt>生豆（ロス${Math.round(r.loss*1000)/10}%）</dt><dd>${fmt(r.green)} g</dd></dl>
-    <div class="how"><div>${fmt(B)}g基準：${std}</div>${spread?`<div>${spread}</div>`:''}</div><div class="sub" style="margin-top:8px">${Object.values(r.parts.reduce((a,p)=>{(a[p.o.id]=a[p.o.id]||{c:p.o.client,d:p.o.due,g:0}).g+=p.g;return a},{})).map(x=>`${md(x.d)} ${esc(x.c)}：${fmt(x.g)}g`).join('<br>')}</div></div>`}).join('')
+    <dt>焙煎済み（割当）</dt><dd>${fmt(Math.min(r.done,r.roasted))} g</dd>
+    ${fin?'':`<dt>残りの焙煎豆</dt><dd><b>${fmt(r.remain)} g</b></dd><dt>残りの生豆（ロス${Math.round(r.loss*1000)/10}%・${lossSrc(r.bean)}）</dt><dd>${fmt(r.green)} g</dd>`}
+    ${r.left>=1?`<dt>未割当の在庫</dt><dd>${fmt(r.left)} g</dd>`:''}</dl>
+    ${fin?'':`<div class="how"><div>${fmt(B)}g基準：${std}</div>${spread?`<div>${spread}</div>`:''}</div>`}
+    <button class="b s" data-roast="${esc(r.bean)}" data-per="${fin?Math.min(MX,B):per}" style="margin-top:8px">＋ 焙煎を記録</button><div class="sub" style="margin-top:8px">${Object.values(r.parts.reduce((a,p)=>{(a[p.o.id]=a[p.o.id]||{id:p.o.id,c:p.o.client,d:p.o.due,g:0}).g+=p.g;return a},{})).map(x=>`${md(x.d)} ${esc(x.c)}：${fmt(Math.min(x.g,P.AL.A[x.id]?.got[r.bean]||0))}/${fmt(x.g)}g`).join('<br>')}</div></div>`}).join('')
     :'<div class="empty">この期間に未焙煎の依頼はありません。</div>';
-  $('#planOrders').innerHTML=all.length?`<table class="stack"><thead><tr><th></th><th>納品希望日</th><th>依頼者</th><th>内容</th><th class="num">焙煎豆</th></tr></thead><tbody>${all.map(o=>`<tr>
+  $('#planOrders').innerHTML=all.length?`<table class="stack"><thead><tr><th></th><th>納品希望日</th><th>依頼者</th><th>内容</th><th class="num">焙煎豆</th><th>焙煎進捗</th></tr></thead><tbody>${all.map(o=>`<tr>
     <td><input type="checkbox" data-ex="${esc(o.id)}" ${excluded.has(o.id)?'':'checked'} aria-label="計画に含める" style="min-height:24px;width:22px;height:22px"></td>
     <td class="num" data-l="納品希望日">${md(o.due)}（${wk(o.due)}）${o.due<today()?' <b style="color:var(--bad)">期限切れ</b>':''}</td>
     <td data-l="依頼者">${esc(o.client)} <span class="tag ${typeCls(o.type)}">${esc(o.type)}</span></td>
     <td data-l="内容">${o.lines.map(l=>`${esc(beanName(l.bean))} ${esc(itemLabel(l.item))}×${esc(l.qty)}`).join('、')}</td>
-    <td class="num" data-l="焙煎豆">${fmt(orderG(o))} g</td></tr>`).join('')}</tbody></table>`:'';
+    <td class="num" data-l="焙煎豆">${fmt(orderG(o))} g</td>
+    <td data-l="焙煎進捗">${progHtml(P.AL.A[o.id])}<button class="b s" data-fin="${esc(o.id)}" style="margin-top:4px">焙煎済にする</button></td></tr>`).join('')}</tbody></table>`:'';
+  $$('[data-fin]').forEach(b=>b.onclick=()=>setStatus(S.orders.find(o=>o.id===b.dataset.fin),'焙煎済'));
+  $$('[data-roast]').forEach(b=>b.onclick=()=>openRoast(b.dataset.roast,+b.dataset.per));
+  renderRoasts(P);
   $$('[data-ex]').forEach(c=>c.onchange=()=>{c.checked?excluded.delete(c.dataset.ex):excluded.add(c.dataset.ex);render()});
   renderWx(P);
 }
-$('#markRoasted').onclick=()=>{const P=calcPlan();if(!P.os.length)return;
-  if(!confirm(`${P.os.length}件の依頼を「焙煎済」にします。`))return;
-  P.os.forEach(o=>{o.status='焙煎済';o.u=now()});save();render()};
+/* 状態の変更：未焙煎→焙煎済/納品済 で割当分を確定、未焙煎に戻すと解除 */
+function setStatus(o,st,quiet){
+  if(!o||o.status===st)return true;
+  if(o.status==='未焙煎'&&st!=='未焙煎'){
+    const a=allocate().A[o.id];
+    if(a&&a.pct<100&&!quiet&&!confirm(`「${o.client}」の焙煎は ${a.pct}% 完了です（不足 ${fmt(a.needT-a.gotT)}g）。\n\n「${st}」にしますか？\n不足分は別に用意した扱いになります（焙煎記録からは引きません）。`))return false;
+    if(a)for(const[b,g]of Object.entries(a.got))if(g>0)S.usage.push({id:uid(),order:o.id,bean:b,g,u:now()});
+  }
+  if(o.status!=='未焙煎'&&st==='未焙煎'){S.usage.filter(x=>x.order===o.id).forEach(x=>S.deleted[x.id]=now());S.usage=S.usage.filter(x=>x.order!==o.id)}
+  o.status=st;o.u=now();save();render();return true;
+}
+$('#markRoasted').onclick=()=>{const AL=allocate(),fs=planOrders().filter(o=>AL.A[o.id]?.pct>=100);
+  if(!fs.length){$('#markRoasted').textContent='100%完了の依頼はまだありません';setTimeout(()=>$('#markRoasted').textContent='100%完了の依頼をまとめて「焙煎済」にする',1800);return}
+  if(!confirm(`${fs.length}件の依頼（100%完了）を「焙煎済」にします。`))return;
+  fs.forEach(o=>setStatus(o,'焙煎済',true))};
+/* 焙煎記録 */
+function openRoast(bean,per){
+  $('#rBean').innerHTML=S.beans.map(b=>`<option value="${esc(b.id)}" ${b.id===bean?'selected':''}>${esc(b.name)}</option>`).join('');
+  $('#rDate').value=today();$('#rGreen').value=per||S.settings.batch;$('#rRoasted').value='';$('#rCount').value=1;rHint();$('#rdlg').showModal();
+}
+function rHint(){const g=+$('#rGreen').value||0,loss=beanLoss($('#rBean').value),n=+$('#rCount').value||1,r=+$('#rRoasted').value;
+  $('#rHint').textContent=g?`焙煎後の重さが空欄なら、ロス${loss}%で約${fmt(g*(1-loss/100))}g/回として記録します。合計 ${n}回・${fmt((r||g*(1-loss/100))*n)}g。`:''}
+['rBean','rGreen','rRoasted','rCount'].forEach(id=>$('#'+id).oninput=rHint);
+$('#addRoast').onclick=()=>openRoast(S.beans[0]?.id);
+$('#rCancel').onclick=()=>$('#rdlg').close();
+$('#rForm').onsubmit=e=>{e.preventDefault();
+  const bean=$('#rBean').value,g=+$('#rGreen').value,n=Math.max(1,+$('#rCount').value||1),loss=beanLoss(bean),r=+$('#rRoasted').value||Math.round(g*(1-loss/100));
+  for(let i=0;i<n;i++)S.roasts.push({id:uid(),bean,date:$('#rDate').value,green:g,roasted:r,est:!$('#rRoasted').value,u:now()+i});
+  save();$('#rdlg').close();render()};
+function renderRoasts(P){
+  const AL=P.AL,beans=S.beans.filter(b=>S.roasts.some(r=>r.bean===b.id));
+  $('#stock').innerHTML=beans.length?beans.map(b=>`<span class="chip">${esc(b.name)} 未割当 <b>${fmt(Math.max(0,AL.left[b.id]||0))}g</b></span>`).join(''):'';
+  const rs=[...S.roasts].sort((a,b)=>b.date.localeCompare(a.date)||(b.u||0)-(a.u||0)).slice(0,40);
+  $('#roastLog').innerHTML=rs.length?`<table class="stack"><thead><tr><th>焙煎日</th><th>豆</th><th class="num">生豆</th><th class="num">焙煎後（後から入力可）</th><th class="num">ロス率</th><th></th></tr></thead><tbody>${rs.map(r=>`<tr>
+    <td data-l="焙煎日">${md(r.date)}（${wk(r.date)}）</td><td data-l="豆">${esc(beanName(r.bean))}</td>
+    <td class="num" data-l="生豆">${fmt(r.green)} g</td><td class="num" data-l="焙煎後"><input type="number" class="rw" data-rw="${esc(r.id)}" value="${r.est?'':esc(r.roasted)}" placeholder="推定${esc(r.roasted)}" aria-label="焙煎後の重さ" style="width:110px;text-align:right"> g</td>
+    <td class="num" data-l="ロス率">${r.est?'<span class="sub">–</span>':(Math.round((1-r.roasted/r.green)*1000)/10)+'%'}</td>
+    <td><button class="b s" data-rdel="${esc(r.id)}">削除</button></td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">まだ焙煎記録はありません。焼いたら「＋ 焙煎を記録」から入力してください。</div>';
+  $$('[data-rw]').forEach(i=>i.onchange=()=>{const r=S.roasts.find(x=>x.id===i.dataset.rw),v=+i.value;
+    if(v>0){r.roasted=v;r.est=false}else{r.est=true;r.roasted=Math.round(r.green*(1-beanLoss(r.bean)/100))}r.u=now();save();setTimeout(render)});
+  $$('[data-rdel]').forEach(b=>b.onclick=()=>{if(!confirm('この焙煎記録を削除しますか？'))return;S.deleted[b.dataset.rdel]=now();S.roasts=S.roasts.filter(r=>r.id!==b.dataset.rdel);save();render()});
+}
 
 /* ---------- weather ---------- */
 let WX=null;
@@ -418,17 +523,17 @@ function renderWx(P){
 /* ---------- orders ---------- */
 $('#fStatus').onchange=()=>render();
 function renderOrders(){
-  const f=$('#fStatus').value;
+  const f=$('#fStatus').value, AL=allocate();
   const os=S.orders.filter(o=>f==='all'?1:f==='open'?o.status!=='納品済':o.status===f).sort((a,b)=>a.due.localeCompare(b.due));
   $('#orderList').innerHTML=os.length?`<table class="stack"><thead><tr><th>納品希望日</th><th>依頼者</th><th>区分</th><th>内容</th><th class="num">焙煎豆</th><th>状態</th><th></th></tr></thead><tbody>${os.map(o=>`<tr class="${o.status==='納品済'?'st-done':''}">
     <td class="num" data-l="納品希望日">${md(o.due)}（${wk(o.due)}）</td><td data-l="依頼者">${esc(o.client)}${o.sample?' <span class="sub">サンプル</span>':''}${o.note?`<div class="sub">${esc(o.note)}</div>`:''}</td>
     <td data-l="区分"><span class="tag ${typeCls(o.type)}">${esc(o.type)}</span></td>
     <td data-l="内容">${o.lines.map(l=>`${esc(beanName(l.bean))} ${esc(itemLabel(l.item))}×${esc(l.qty)}`).join('<br>')}</td>
     <td class="num" data-l="焙煎豆">${fmt(orderG(o))} g</td>
-    <td data-l="状態"><select data-st="${esc(o.id)}" aria-label="状態">${['未焙煎','焙煎済','納品済'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td data-l="状態"><select data-st="${esc(o.id)}" aria-label="状態">${['未焙煎','焙煎済','納品済'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}</select>${o.status==='未焙煎'?progHtml(AL.A[o.id]):''}</td>
     <td><button class="b s" data-ed="${esc(o.id)}">編集</button> <button class="b s" data-dup="${esc(o.id)}">複製</button> <button class="b s" data-del="${esc(o.id)}">削除</button></td></tr>`).join('')}</tbody></table>`
     :'<div class="empty">依頼はまだありません。「＋ 依頼を追加」から登録してください。</div>';
-  $$('[data-st]').forEach(s=>s.onchange=()=>{{const o=S.orders.find(o=>o.id===s.dataset.st);o.status=s.value;o.u=now()}save();render()});
+  $$('[data-st]').forEach(s=>s.onchange=()=>{const o=S.orders.find(o=>o.id===s.dataset.st);if(!setStatus(o,s.value))s.value=o.status});
   $$('[data-ed]').forEach(b=>b.onclick=()=>openDlg(S.orders.find(o=>o.id===b.dataset.ed)));
   $$('[data-dup]').forEach(b=>b.onclick=()=>{const o=structuredClone(S.orders.find(o=>o.id===b.dataset.dup));o.id=uid();delete o.sample;o.status='未焙煎';openDlg(o,true)});
   $$('[data-del]').forEach(b=>b.onclick=()=>{if(!confirm('この依頼を削除しますか？'))return;S.deleted[b.dataset.del]=now();S.orders=S.orders.filter(o=>o.id!==b.dataset.del);save();render()});
@@ -461,9 +566,11 @@ $('#addLine').onclick=()=>{const last=$$('#oLines .ln').pop();$('#oLines').inser
 $('#oCancel').onclick=()=>$('#dlg').close();
 $('#oForm').onsubmit=e=>{e.preventDefault();
   const lines=$$('#oLines .ln').map(r=>({bean:r.querySelector('.lb').value,item:r.querySelector('.li').value,qty:+r.querySelector('.lq').value||0})).filter(l=>l.qty>0);
-  const o={id:editing||uid(),client:$('#oClient').value.trim(),type:$('#oType').value,due:$('#oDue').value,status:$('#oStatus').value,note:$('#oNote').value.trim(),lines,u:now()};
-  if(editing){const i=S.orders.findIndex(x=>x.id===editing);S.orders[i]=o}else S.orders.push(o);
-  save();$('#dlg').close();render()};
+  const prev=editing?S.orders.find(x=>x.id===editing):null, want=$('#oStatus').value;
+  const o={id:editing||uid(),c:prev?.c||now(),client:$('#oClient').value.trim(),type:$('#oType').value,due:$('#oDue').value,status:prev?prev.status:want,note:$('#oNote').value.trim(),lines,u:now()};
+  if(prev){const i=S.orders.indexOf(prev);S.orders[i]=o}else S.orders.push(o);
+  save();$('#dlg').close();
+  if(prev&&want!==o.status)setStatus(o,want);else render()};
 
 /* ---------- settings ---------- */
 const sMap={sBatch:'batch',sMax:'max',sLoss:'loss',sSpare:'spare',sPerDay:'perDay',sRest:'rest',sPlace:'place',sLat:'lat',sLon:'lon'};
@@ -472,7 +579,8 @@ function renderSettings(){
   for(const[id,k]of Object.entries(sMap))if(document.activeElement.id!==id)$('#'+id).value=S.settings[k];
   for(const[id,k]of Object.entries(gMap))if(document.activeElement.id!==id)$('#'+id).value=S.settings.g[k];
   if(!$('#beanSet').contains(document.activeElement))
-  $('#beanSet').innerHTML=S.beans.map(b=>`<div class="r"><input data-bn="${esc(b.id)}" value="${esc(b.name)}" aria-label="豆の名前"><input type="number" step="0.5" data-bl="${esc(b.id)}" value="${esc(b.loss)}" placeholder="標準" aria-label="ロス%"><button class="b s" data-bd="${esc(b.id)}">削除</button></div>`).join('');
+  $('#beanSet').innerHTML=S.beans.map(b=>`<div class="r"><input data-bn="${esc(b.id)}" value="${esc(b.name)}" aria-label="豆の名前"><input type="number" step="0.5" data-bl="${esc(b.id)}" value="${esc(b.loss)}" placeholder="${(a=>a?'実測'+a.v:'標準')(autoLoss(b.id))}" aria-label="ロス%"><button class="b s" data-bd="${esc(b.id)}">削除</button>
+    <div class="li2">${(a=>a?`実測ロス率 <b>${a.v}%</b>（直近${a.n}回の平均）${b.loss!==''&&b.loss!=null?` ／ 手入力 ${esc(b.loss)}% を優先中（空欄にすると実測を使用）`:' を使用中'}`:`実測データ ${(S.roasts||[]).filter(r=>r.bean===b.id&&!r.est).length}/2回 ／ ${b.loss!==''&&b.loss!=null?`手入力 ${esc(b.loss)}%`:`標準 ${S.settings.loss}%`} を使用中`)(autoLoss(b.id))}</div></div>`).join('');
   $$('[data-bn]').forEach(i=>i.onchange=()=>{{const b=S.beans.find(b=>b.id===i.dataset.bn);b.name=i.value;b.u=now()}save()});
   $$('[data-bl]').forEach(i=>i.onchange=()=>{{const b=S.beans.find(b=>b.id===i.dataset.bl);b.loss=i.value;b.u=now()}save()});
   $$('[data-bd]').forEach(b=>b.onclick=()=>{if(S.orders.some(o=>o.lines.some(l=>l.bean===b.dataset.bd))&&!confirm('この豆を使っている依頼があります。削除しますか？'))return;S.deleted[b.dataset.bd]=now();S.beans=S.beans.filter(x=>x.id!==b.dataset.bd);save();render()});
@@ -482,7 +590,7 @@ for(const[id,k]of Object.entries(gMap))$('#'+id).onchange=e=>{S.settings.g[k]=+e
 $('#addBean').onclick=()=>{S.beans.push({id:uid(),name:'新しい豆',loss:'',u:now()});save();render()};
 $('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download=`roast-plan-${today()}.json`;a.click()};
 $('#copyJson').onclick=async e=>{try{await navigator.clipboard.writeText(JSON.stringify(S));e.target.textContent='コピーしました'}catch(err){e.target.textContent='コピー不可'}setTimeout(()=>e.target.textContent='JSONをコピー',1500)};
-$('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.orders||!d.beans)throw 0;const t=now();d.deleted=d.deleted||{};d.settingsU=t;d.orders.forEach(o=>o.u=t);d.beans.forEach(b=>b.u=t);S=d;save();loadWx(true);render()}catch(err){alert('読み込めないファイルです')}})};
+$('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.orders||!d.beans)throw 0;const ts=now();d.deleted=d.deleted||{};d.roasts=d.roasts||[];d.usage=d.usage||[];d.settingsU=ts;[...d.orders,...d.beans,...d.roasts,...d.usage].forEach(x=>x.u=ts);S=d;fillDefaults();save();loadWx(true);render()}catch(err){alert('読み込めないファイルです')}})};
 $('#clearSample').onclick=()=>{S.orders.filter(o=>o.sample).forEach(o=>S.deleted[o.id]=now());S.orders=S.orders.filter(o=>!o.sample);save();render()};
 
 /* ---------- sync (GitHub Gist) ---------- */
@@ -504,9 +612,9 @@ function mergeData(L,R){
     return[...m.values()].filter(x=>!(del[x.id]>=(x.u||0)))};
   const lw=(L.settingsU||0)>(R.settingsU||0);
   return {settings:(lw||!R.settings)?L.settings:R.settings,settingsU:Math.max(L.settingsU||0,R.settingsU||0),
-    beans:ml(L.beans||[],R.beans||[]),orders:ml(L.orders||[],R.orders||[]),deleted:del};
+    beans:ml(L.beans||[],R.beans||[]),orders:ml(L.orders||[],R.orders||[]),roasts:ml(L.roasts||[],R.roasts||[]),usage:ml(L.usage||[],R.usage||[]),deleted:del};
 }
-const canon=d=>JSON.stringify([d.settings,d.settingsU,[...d.beans].sort((a,b)=>a.id<b.id?-1:1),[...d.orders].sort((a,b)=>a.id<b.id?-1:1),Object.keys(d.deleted).sort().map(k=>[k,d.deleted[k]])]);
+const canon=d=>JSON.stringify([d.settings,d.settingsU,[...d.beans].sort((a,b)=>a.id<b.id?-1:1),[...d.orders].sort((a,b)=>a.id<b.id?-1:1),[...d.roasts].sort((a,b)=>a.id<b.id?-1:1),[...d.usage].sort((a,b)=>a.id<b.id?-1:1),Object.keys(d.deleted).sort().map(k=>[k,d.deleted[k]])]);
 let syncing=false,again=false;
 async function sync(){
   if(!SY.token||!SY.gist)return;
@@ -541,7 +649,7 @@ async function connect(token){
     S.orders.filter(o=>o.sample).forEach(o=>S.deleted[o.id]=now());S.orders=mine;
     if(found){
       const R=await readGist(found.id);
-      if(R&&!mine.length){S.settings=R.settings;S.settingsU=R.settingsU;S.beans=R.beans;S.orders=R.orders;S.deleted={...R.deleted,...S.deleted};fillDefaults()}
+      if(R&&!mine.length){S.settings=R.settings;S.settingsU=R.settingsU;S.beans=R.beans;S.orders=R.orders;S.roasts=R.roasts||[];S.usage=R.usage||[];S.deleted={...R.deleted,...S.deleted};fillDefaults()}
       else if(R){ // この端末の依頼を残しつつ、豆は名前で揃える
         const byName=new Map(R.beans.map(b=>[b.name,b.id]));
         S.beans=S.beans.filter(b=>{const rid=byName.get(b.name);if(rid&&rid!==b.id){S.orders.forEach(o=>o.lines.forEach(l=>{if(l.bean===b.id){l.bean=rid;o.u=now()}}));return false}return true});
