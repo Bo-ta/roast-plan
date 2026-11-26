@@ -66,8 +66,13 @@ button.s{min-height:34px;padding:4px 10px;font-size:13px}
 .bc dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:6px 0 0;font-size:14px}
 .bc dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bc dt{color:var(--mute)}
+.plan{display:flex;align-items:baseline;gap:8px;background:var(--panel);border-radius:8px;padding:6px 10px;margin:4px 0 2px}
+.plan .pl{font-size:12px;color:var(--ember);font-weight:700;white-space:nowrap}
+.plan .pv{font-size:18px}.plan b{font-size:22px;font-weight:900}
+.how{margin-top:8px;font-size:13px;line-height:1.6;border-top:1px dashed var(--line);padding-top:6px}
+.how b{color:var(--ember)}
 .fill{height:10px;background:var(--panel);border-radius:5px;overflow:hidden;display:flex;margin-top:8px}
-.fill i{display:block;height:100%;background:var(--bean);border-right:2px solid var(--bg)}
+.fill i{display:block;height:100%;background:var(--bean);border-right:2px solid var(--panel)}
 .fill i.part{background:var(--ember)}
 .note{background:var(--panel);border-left:4px solid var(--ember);padding:10px 14px;border-radius:6px;margin:12px 0;font-size:14px}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -152,7 +157,8 @@ dialog::backdrop{background:#0008}
 <section class="view" id="settings">
   <h2>焙煎の条件</h2>
   <div class="grid2">
-    <label>1回の焙煎量（生豆 g）<input type="number" id="sBatch" min="1"></label>
+    <label>1回の焙煎量（生豆 g・基準）<input type="number" id="sBatch" min="1"></label>
+    <label>1回の最大焙煎量（生豆 g）<input type="number" id="sMax" min="1"></label>
     <label>標準の焙煎ロス（%）<input type="number" id="sLoss" min="0" max="40" step="0.5"></label>
     <label>予備率（%・テスト抽出など）<input type="number" id="sSpare" min="0" max="50"></label>
     <label>1日の最大焙煎回数<input type="number" id="sPerDay" min="1"></label>
@@ -244,6 +250,7 @@ let S;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S){S=defaults();seed(S)}
 if(!S.deleted)S.deleted={};
+if(S.settings.max==null)S.settings.max=750;
 const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const now=()=>Date.now();
 let syncTm;
@@ -274,29 +281,34 @@ function calcPlan(){
   const os=planOrders().filter(o=>!excluded.has(o.id)), map=new Map();
   os.forEach(o=>o.lines.forEach(l=>{const g=itemG(l.item)*(+l.qty||0);if(!g)return;
     const m=map.get(l.bean)||{bean:l.bean,roasted:0,parts:[]};m.roasted+=g;m.parts.push({o,l,g});map.set(l.bean,m)}));
-  const B=+S.settings.batch||650, spare=(+S.settings.spare||0)/100;
-  const rows=[...map.values()].map(m=>{const loss=beanLoss(m.bean)/100,green=m.roasted*(1+spare)/(1-loss),n=Math.ceil(green/B-1e-9);
-    return {...m,loss,green,n,yieldMax:n*B*(1-loss),surplus:n*B*(1-loss)-m.roasted*(1+spare)}}).sort((a,b)=>b.n-a.n);
+  const B=+S.settings.batch||650, MX=Math.max(B,+S.settings.max||B), spare=(+S.settings.spare||0)/100;
+  const rows=[...map.values()].map(m=>{const loss=beanLoss(m.bean)/100,green=Math.ceil(m.roasted*(1+spare)/(1-loss)),
+    n=Math.ceil(green/B-1e-9),k=Math.floor(green/B+1e-9),r=green-k*B,best=Math.ceil(green/MX-1e-9),per=Math.ceil(green/best);
+    return {...m,loss,green,n,k,r,best,per,B,MX}}).sort((a,b)=>b.best-a.best);
   const due=os.length?os.map(o=>o.due).sort()[0]:null;
   const deadline=due?addDays(due,-(+S.settings.rest||0)):null;
-  const total=rows.reduce((a,r)=>a+r.n,0);
-  return {os,rows,due,deadline,total,days:Math.ceil(total/(+S.settings.perDay||1))};
+  const total=rows.reduce((a,r)=>a+r.best,0), totalStd=rows.reduce((a,r)=>a+r.n,0);
+  return {os,rows,due,deadline,total,totalStd,days:Math.ceil(total/(+S.settings.perDay||1))};
 }
 function renderPlan(){
   const P=calcPlan(), all=planOrders();
   $('#kpis').innerHTML=[
-    ['hot',P.total,'焙煎回数（合計）'],['',fmt(P.rows.reduce((a,r)=>a+r.green,0))+'<small style="font-size:16px"> g</small>','必要な生豆'],
+    ['hot',P.total,P.totalStd>P.total?`焙煎回数（${S.settings.batch}g基準なら${P.totalStd}回）`:'焙煎回数（合計）'],['',fmt(P.rows.reduce((a,r)=>a+r.green,0))+'<small style="font-size:16px"> g</small>','必要な生豆'],
     ['',fmt(P.rows.reduce((a,r)=>a+r.roasted,0))+'<small style="font-size:16px"> g</small>','必要な焙煎豆'],
     ['',P.deadline?md(P.deadline)+`<small style="font-size:16px">（${wk(P.deadline)}）</small>`:'—','焙煎期限（最短の納品から逆算）']
   ].map(([c,n,l])=>`<div class="kpi ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
   $('#beanCards').innerHTML=P.rows.length?P.rows.map(r=>{
-    const B=+S.settings.batch, segs=Array.from({length:r.n},(_,i)=>{const used=Math.min(B,r.green-i*B);return `<i class="${used<B-1?'part':''}" style="width:${100/r.n*Math.max(.08,used/B)}%"></i>`}).join('');
-    return `<div class="bc"><h3>${esc(beanName(r.bean))}<span>${r.n}<small> 回</small></span></h3>
-    <div class="fill" title="各回の生豆投入量">${segs}</div>
+    const {B,MX,k,r:rem,n,best,per}=r, add=k?Math.ceil(rem/k):0;
+    const std=k===0?`1回 ${fmt(r.green)}g`:rem<1?`${fmt(B)}g × ${k}回（ちょうど）`:`${fmt(B)}g × ${k}回 ＋ 最後の1回 <b>${fmt(rem)}g</b>（計${n}回）`;
+    const spread=k&&rem>=1?(B+add<=MX?`最後の${fmt(rem)}g を${k}回に分けると +${fmt(add)}g → <b>${fmt(B+add)}g × ${k}回</b>（上限${fmt(MX)}g以内）`
+      :`最後の${fmt(rem)}g を${k}回に分けると +${fmt(add)}g → ${fmt(B+add)}g（上限${fmt(MX)}gを超える）`):'';
+    const segs=Array.from({length:best},()=>`<i style="width:${100/best*(per/MX)}%"></i>`).join('');
+    return `<div class="bc"><h3>${esc(beanName(r.bean))}<span>${best<n?`<small>${n}→</small>`:''}${best}<small> 回</small></span></h3>
+    <div class="plan"><div class="pl">おすすめ</div><div class="pv">1回 <b>${fmt(per)}g</b> × ${best}回</div></div>
+    <div class="fill" title="各回の生豆投入量（バーの長さ＝上限${fmt(MX)}g）">${segs}</div>
     <dl><dt>焙煎豆（必要）</dt><dd>${fmt(r.roasted)} g</dd>
-    <dt>生豆（ロス${Math.round(r.loss*1000)/10}%）</dt><dd>${fmt(r.green)} g</dd>
-    <dt>最大量で焼いた場合の余り</dt><dd>約 ${fmt(r.surplus)} g</dd>
-    </dl><div class="sub" style="margin-top:8px">${Object.values(r.parts.reduce((a,p)=>{(a[p.o.id]=a[p.o.id]||{c:p.o.client,d:p.o.due,g:0}).g+=p.g;return a},{})).map(x=>`${md(x.d)} ${esc(x.c)}：${fmt(x.g)}g`).join('<br>')}</div></div>`}).join('')
+    <dt>生豆（ロス${Math.round(r.loss*1000)/10}%）</dt><dd>${fmt(r.green)} g</dd></dl>
+    <div class="how"><div>${fmt(B)}g基準：${std}</div>${spread?`<div>${spread}</div>`:''}</div><div class="sub" style="margin-top:8px">${Object.values(r.parts.reduce((a,p)=>{(a[p.o.id]=a[p.o.id]||{c:p.o.client,d:p.o.due,g:0}).g+=p.g;return a},{})).map(x=>`${md(x.d)} ${esc(x.c)}：${fmt(x.g)}g`).join('<br>')}</div></div>`}).join('')
     :'<div class="empty">この期間に未焙煎の依頼はありません。</div>';
   $('#planOrders').innerHTML=all.length?`<table class="stack"><thead><tr><th></th><th>納品希望日</th><th>依頼者</th><th>内容</th><th class="num">焙煎豆</th></tr></thead><tbody>${all.map(o=>`<tr>
     <td><input type="checkbox" data-ex="${esc(o.id)}" ${excluded.has(o.id)?'':'checked'} aria-label="計画に含める" style="min-height:24px;width:22px;height:22px"></td>
@@ -415,7 +427,7 @@ $('#oForm').onsubmit=e=>{e.preventDefault();
   save();$('#dlg').close();render()};
 
 /* ---------- settings ---------- */
-const sMap={sBatch:'batch',sLoss:'loss',sSpare:'spare',sPerDay:'perDay',sRest:'rest',sPlace:'place',sLat:'lat',sLon:'lon'};
+const sMap={sBatch:'batch',sMax:'max',sLoss:'loss',sSpare:'spare',sPerDay:'perDay',sRest:'rest',sPlace:'place',sLat:'lat',sLon:'lon'};
 const gMap={gBag100:'bag100',gBag200:'bag200',gBag500:'bag500',gDrip:'drip',gHot:'hot',gIce:'ice'};
 function renderSettings(){
   for(const[id,k]of Object.entries(sMap))if(document.activeElement.id!==id)$('#'+id).value=S.settings[k];
