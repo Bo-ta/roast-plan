@@ -166,9 +166,12 @@ dialog::backdrop{background:#0008}
   </div>
   <h2>単位あたりの豆量（焙煎後 g）</h2>
   <div class="grid2">
-    <label>豆 小袋<input type="number" id="gBag100"></label>
-    <label>豆 中袋<input type="number" id="gBag200"></label>
-    <label>業務用袋<input type="number" id="gBag500"></label>
+    <label>豆 袋A（初期100g）<input type="number" id="gBag100"></label>
+    <label>豆 袋B（初期150g）<input type="number" id="gBag150"></label>
+    <label>豆 袋C（初期200g）<input type="number" id="gBag200"></label>
+    <label>業務用 袋A（初期200g）<input type="number" id="gBiz200"></label>
+    <label>業務用 袋B（初期400g）<input type="number" id="gBiz400"></label>
+    <label>業務用 袋C（初期500g）<input type="number" id="gBag500"></label>
     <label>ドリップバッグ<input type="number" id="gDrip"></label>
     <label>ホット 1杯<input type="number" id="gHot"></label>
     <label>アイス 1杯<input type="number" id="gIce"></label>
@@ -233,7 +236,7 @@ const fmt=n=>Math.round(n).toLocaleString('ja-JP');
 function defaults(){
   const t=today();
   return {settings:{batch:650,loss:17,spare:0,perDay:5,rest:1,place:'柳川',lat:33.1631,lon:130.4064,
-    g:{bag100:100,bag200:200,bag500:500,drip:10,hot:15,ice:16}},
+    g:{bag100:100,bag150:150,bag200:200,biz200:200,biz400:400,bag500:500,drip:10,hot:15,ice:16}},
   beans:['マンデリン','グァテマラ','ゲイシャ','クイーン(デカフェ)','ゴールデンビーンズ','コロンビア'].map(n=>({id:uid(),name:n,loss:''})),
   orders:[], _sample:true, _seedDate:t};
 }
@@ -250,13 +253,18 @@ let S;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 if(!S){S=defaults();seed(S)}
 if(!S.deleted)S.deleted={};
-if(S.settings.max==null)S.settings.max=750;
+const DEF={batch:650,max:750,loss:17,spare:0,perDay:5,rest:1,place:'柳川',lat:33.1631,lon:130.4064,g:{bag100:100,bag150:150,bag200:200,biz200:200,biz400:400,bag500:500,drip:10,hot:15,ice:16}};
+function fillDefaults(){ // 古い版のデータや同期で来た設定に、新しい項目の初期値を補う
+  S.settings={...DEF,...(S.settings||{}),g:{...DEF.g,...((S.settings||{}).g||{})}};
+  for(const k of Object.keys(DEF))if(k!=='g'&&k!=='place'&&(S.settings[k]===''||S.settings[k]==null||Number.isNaN(S.settings[k])))S.settings[k]=DEF[k];
+}
+fillDefaults();
 const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const now=()=>Date.now();
 let syncTm;
 const save=()=>{store();if(SY.gist){SY.dirty=true;saveSY();setStat();clearTimeout(syncTm);syncTm=setTimeout(sync,1200)}};
 
-const ITEMS={bag100:['豆 小袋','袋'],bag200:['豆 中袋','袋'],bag500:['業務用袋','袋'],drip:['ドリップバッグ','個'],hot:['ホット','杯'],ice:['アイス','杯'],gram:['豆 g指定','g']};
+const ITEMS={bag100:['豆','袋'],bag150:['豆','袋'],bag200:['豆','袋'],biz200:['業務用','袋'],biz400:['業務用','袋'],bag500:['業務用','袋'],drip:['ドリップバッグ','個'],hot:['ホット','杯'],ice:['アイス','杯'],gram:['豆 g指定','g']};
 const itemG=k=>k==='gram'?1:(+S.settings.g[k]||0);
 const itemLabel=k=>k==='gram'?'豆 g指定':`${ITEMS[k][0]}（${itemG(k)}g）`;
 const beanName=id=>S.beans.find(b=>b.id===id)?.name||'（削除された豆）';
@@ -281,7 +289,7 @@ function calcPlan(){
   const os=planOrders().filter(o=>!excluded.has(o.id)), map=new Map();
   os.forEach(o=>o.lines.forEach(l=>{const g=itemG(l.item)*(+l.qty||0);if(!g)return;
     const m=map.get(l.bean)||{bean:l.bean,roasted:0,parts:[]};m.roasted+=g;m.parts.push({o,l,g});map.set(l.bean,m)}));
-  const B=+S.settings.batch||650, MX=Math.max(B,+S.settings.max||B), spare=(+S.settings.spare||0)/100;
+  const B=+S.settings.batch||650, MX=Math.max(B,+S.settings.max||750), spare=(+S.settings.spare||0)/100;
   const rows=[...map.values()].map(m=>{const loss=beanLoss(m.bean)/100,green=Math.ceil(m.roasted*(1+spare)/(1-loss)),
     n=Math.ceil(green/B-1e-9),k=Math.floor(green/B+1e-9),r=green-k*B,best=Math.ceil(green/MX-1e-9),per=Math.ceil(green/best);
     return {...m,loss,green,n,k,r,best,per,B,MX}}).sort((a,b)=>b.best-a.best);
@@ -428,7 +436,7 @@ $('#oForm').onsubmit=e=>{e.preventDefault();
 
 /* ---------- settings ---------- */
 const sMap={sBatch:'batch',sMax:'max',sLoss:'loss',sSpare:'spare',sPerDay:'perDay',sRest:'rest',sPlace:'place',sLat:'lat',sLon:'lon'};
-const gMap={gBag100:'bag100',gBag200:'bag200',gBag500:'bag500',gDrip:'drip',gHot:'hot',gIce:'ice'};
+const gMap={gBag100:'bag100',gBag150:'bag150',gBag200:'bag200',gBiz200:'biz200',gBiz400:'biz400',gBag500:'bag500',gDrip:'drip',gHot:'hot',gIce:'ice'};
 function renderSettings(){
   for(const[id,k]of Object.entries(sMap))if(document.activeElement.id!==id)$('#'+id).value=S.settings[k];
   for(const[id,k]of Object.entries(gMap))if(document.activeElement.id!==id)$('#'+id).value=S.settings.g[k];
@@ -479,7 +487,7 @@ async function sync(){
     const changedLocal=canon(M)!==canon(mergeData(S,{beans:[],orders:[],deleted:{}}));
     if(!R||canon(M)!==canon(mergeData(R,{beans:[],orders:[],deleted:{}})))
       await gh('/gists/'+SY.gist,{method:'PATCH',body:JSON.stringify({files:{[FN]:{content:JSON.stringify(M)}}})});
-    Object.assign(S,M);store();
+    Object.assign(S,M);fillDefaults();store();
     SY.last=now();SY.dirty=false;SY.state='ok';saveSY();
     if(changedLocal&&!$('#dlg').open)render();
   }catch(e){SY.state=e.message==='auth'?'auth':e.message==='gone'?'gone':'offline';saveSY()}
@@ -502,7 +510,7 @@ async function connect(token){
     S.orders.filter(o=>o.sample).forEach(o=>S.deleted[o.id]=now());S.orders=mine;
     if(found){
       const R=await readGist(found.id);
-      if(R&&!mine.length){S.settings=R.settings;S.settingsU=R.settingsU;S.beans=R.beans;S.orders=R.orders;S.deleted={...R.deleted,...S.deleted}}
+      if(R&&!mine.length){S.settings=R.settings;S.settingsU=R.settingsU;S.beans=R.beans;S.orders=R.orders;S.deleted={...R.deleted,...S.deleted};fillDefaults()}
       else if(R){ // この端末の依頼を残しつつ、豆は名前で揃える
         const byName=new Map(R.beans.map(b=>[b.name,b.id]));
         S.beans=S.beans.filter(b=>{const rid=byName.get(b.name);if(rid&&rid!==b.id){S.orders.forEach(o=>o.lines.forEach(l=>{if(l.bean===b.id){l.bean=rid;o.u=now()}}));return false}return true});
