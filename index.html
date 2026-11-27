@@ -434,7 +434,7 @@ function renderRoasts(P){
   $('#stock').innerHTML=beans.length?beans.map(b=>`<span class="chip">${esc(b.name)} 未割当 <b>${fmt(Math.max(0,AL.left[b.id]||0))}g</b></span>`).join(''):'';
   const rs=[...S.roasts].sort((a,b)=>b.date.localeCompare(a.date)||(b.u||0)-(a.u||0)).slice(0,40);
   $('#roastLog').innerHTML=rs.length?`<table class="stack"><thead><tr><th>焙煎日</th><th>豆</th><th class="num">生豆</th><th class="num">焙煎後（後から入力可）</th><th class="num">ロス率</th><th></th></tr></thead><tbody>${rs.map(r=>`<tr>
-    <td data-l="焙煎日">${md(r.date)}（${wk(r.date)}）</td><td data-l="豆">${esc(beanName(r.bean))}</td>
+    <td data-l="焙煎日">${md(r.date)}（${wk(r.date)}）</td><td data-l="豆">${esc(beanName(r.bean))}${r.src==='log'?' <span class="tag">焙煎ログ</span>':''}</td>
     <td class="num" data-l="生豆">${fmt(r.green)} g</td><td class="num" data-l="焙煎後"><input type="number" class="rw" data-rw="${esc(r.id)}" value="${r.est?'':esc(r.roasted)}" placeholder="推定${esc(r.roasted)}" aria-label="焙煎後の重さ" style="width:110px;text-align:right"> g</td>
     <td class="num" data-l="ロス率">${r.est?'<span class="sub">–</span>':(Math.round((1-r.roasted/r.green)*1000)/10)+'%'}</td>
     <td><button class="b s" data-rdel="${esc(r.id)}">削除</button></td></tr>`).join('')}</tbody></table>`
@@ -667,7 +667,7 @@ async function connect(token){
   }
 }
 function renderSync(){
-  const box=$('#syncBox');if(box.contains(document.activeElement))return;
+  const box=$('#syncBox');if(box.contains(document.activeElement)&&document.activeElement.tagName==='INPUT')return;
   if(!SY.gist){
     box.innerHTML=`<div class="syncCard"><div>GitHubのアクセストークン（権限は「gist」のみ）を貼り付けて「同期を開始」。使うすべての端末で同じトークンを入れると、自動で同じデータを共有します。</div>
     <div class="row"><label style="flex:1 1 260px">アクセストークン<input type="password" id="tok" autocomplete="off" placeholder="ghp_..."></label><button class="b p" id="tokGo">同期を開始</button></div>
