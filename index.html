@@ -104,6 +104,8 @@ dialog::backdrop{background:#0008}
 .beanset .li2{grid-column:1/-1;font-size:12px;color:var(--mute);margin-top:-2px}
 .beanset .li2 b{color:var(--ink)}
 .scroll{overflow-x:auto}
+.wxhead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.wxhead .sub{flex:1 1 260px}
 .prog{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .prog .pb{flex:1 1 60px;min-width:50px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
 .prog .pb i{display:block;height:100%;background:var(--ember)}
@@ -144,7 +146,8 @@ dialog::backdrop{background:#0008}
 <main>
 <section class="view on" id="plan">
   <h2>焙煎日和（今後16日）</h2>
-  <div class="sub" id="wxInfo">天気予報を読み込み中…</div>
+  <div class="wxhead"><div class="sub" id="wxInfo">天気予報を読み込み中…</div><button type="button" class="b s" id="wxRefresh">最新の予報に更新</button></div>
+  <div class="sub" id="wxMsg" style="min-height:0"></div>
   <div class="wx" id="wx"></div>
   <div id="wxDetail" class="wxd"></div>
   <div class="legend"><span>各日の棒は左から 朝9時・昼12時・日中15時・夕方17時〜</span><span><b style="background:var(--ok)"></b>80〜 焙煎日和</span><span><b style="background:var(--warn)"></b>55〜79 まずまず</span><span><b style="background:var(--bad)"></b>〜54 見送り推奨</span><span>オレンジ枠＝おすすめ焙煎日／薄い日＝焙煎期限より後</span></div>
@@ -452,12 +455,23 @@ let WX=null;
 try{WX=JSON.parse(localStorage.getItem(WXKEY))}catch(e){}
 async function loadWx(force){
   const s=S.settings, k=`${s.lat},${s.lon}`;
-  if(!force&&WX&&WX.k===k&&Date.now()-WX.t<3*3600e3){render();return}
+  if(!force&&WX&&WX.k===k&&Date.now()-WX.t<3*3600e3){render();return true}
+  let ok=false;
   const u=`https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lon}&hourly=precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,weather_code,temperature_2m&daily=sunrise,sunset&wind_speed_unit=ms&timezone=Asia%2FTokyo&forecast_days=16`;
-  try{const r=await fetch(u);if(!r.ok)throw 0;WX={k,t:Date.now(),d:await r.json()};try{localStorage.setItem(WXKEY,JSON.stringify(WX))}catch(e){}}
-  catch(e){$('#wxInfo').textContent='天気予報を取得できませんでした（オフライン？）。'+(WX?'前回取得分を表示しています。':'');}
+  try{const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;WX={k,t:Date.now(),d:await r.json()};ok=true;try{localStorage.setItem(WXKEY,JSON.stringify(WX))}catch(e){}}
+  catch(e){}
   render();
+  if(!ok)$('#wxMsg').textContent='天気予報を取得できませんでした（オフライン？）。'+(WX?'前回取得した予報を表示しています。':'');
+  return ok;
 }
+$('#wxRefresh').onclick=async()=>{
+  const b=$('#wxRefresh');if(b.disabled)return;
+  b.disabled=true;b.textContent='更新中…';$('#wxMsg').textContent='';
+  const ok=await loadWx(true);
+  b.disabled=false;b.textContent='最新の予報に更新';
+  if(ok)$('#wxMsg').textContent=`${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})} に最新の予報を取得しました。`;
+  setTimeout(()=>{if(!$('#wxRefresh').disabled)$('#wxMsg').textContent=''},6000);
+};
 const SLOTS=[{k:'am',n:'朝',from:9,to:11},{k:'noon',n:'昼',from:12,to:14},{k:'aft',n:'日中',from:15,to:16},{k:'eve',n:'夕方',from:17,to:18}];
 let selDay=null;
 function scoreHours(h,idx){
